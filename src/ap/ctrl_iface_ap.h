@@ -58,4 +58,7 @@ int hostapd_ctrl_iface_acl_show_mac(struct mac_acl_entry *acl, int num,
 int hostapd_disassoc_accept_mac(struct hostapd_data *hapd);
 int hostapd_disassoc_deny_mac(struct hostapd_data *hapd);
 
+/* MICHAEL & VITOR */
+int wpa_auth_get_demo_token(struct wpa_state_machine *sm,char *buf, size_t buflen);
+
 #endif /* CTRL_IFACE_AP_H */

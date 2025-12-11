@@ -34,6 +34,9 @@
 #include "taxonomy.h"
 #include "ieee802_11_auth.h"
 
+/* MICHAEL / VITOR - EXPERIMENT */
+// static const u8 token_ssid[] = "TOKENSSID123"; 
+// #define TOKEN_SSID_LEN (sizeof(token_ssid) - 1)
 
 #ifdef NEED_AP_MLME
 
@@ -1579,9 +1582,35 @@ void handle_probe_req(struct hostapd_data *hapd,
 	}
 #endif /* CONFIG_TAXONOMY */
 
+	// /* MICHAEL & VITOR */
+	// if (elems.ssid && elems.ssid_len > 0) {
+    // 	wpa_hexdump(MSG_INFO, "MICHAEL / VITOR : probe SSID",
+    //     	        elems.ssid, elems.ssid_len);
+	// } else {
+	// 	wpa_printf(MSG_INFO,
+	// 			"MICHAEL / VITOR : probe with empty SSID from " MACSTR,
+	// 			MAC2STR(mgmt->sa));
+	// }
+	// int token_match = 0;
+
+	// /* MICHAEL & VITOR */
+	// if (elems.ssid && elems.ssid_len == TOKEN_SSID_LEN &&
+	// 	os_memcmp(elems.ssid, token_ssid, TOKEN_SSID_LEN) == 0) {
+	// 	token_match = 1;
+	// 	wpa_printf(MSG_INFO,
+	// 			"MICHAEL / VITOR : probe request with token SSID from " MACSTR,
+	// 			MAC2STR(mgmt->sa));
+	// }
+
+	wpa_printf(MSG_INFO, "TUFF GAY TUFF");
+
 	res = ssid_match(hapd, elems.ssid, elems.ssid_len,
 			 elems.ssid_list, elems.ssid_list_len,
 			 elems.short_ssid_list, elems.short_ssid_list_len);
+
+	// if (token_match)
+    // 	res = EXACT_SSID_MATCH;
+
 	if (res == NO_SSID_MATCH && hapd->iconf->mbssid) {
 		/* If the Probe Request frame is directed to the TX BSS in an
 		 * MBSSID set, check whether the SSID is matching any of the

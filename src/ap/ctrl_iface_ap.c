@@ -474,6 +474,19 @@ static int hostapd_ctrl_iface_sta_mib(struct hostapd_data *hapd,
 			len += ret;
 	}
 
+    {
+        char token_hex[33];
+
+        if (sta->wpa_sm &&
+            wpa_auth_get_demo_token(sta->wpa_sm,
+                                    token_hex, sizeof(token_hex)) == 0) {
+            ret = os_snprintf(buf + len, buflen - len,
+                              "demo_token=%s\n", token_hex);
+            if (!os_snprintf_error(buflen - len, ret))
+                len += ret;
+        }
+	}
+	
 #ifdef CONFIG_IEEE80211BE
 	if (sta->mld_info.mld_sta) {
 		u16 mld_sta_capa = sta->mld_info.common_info.mld_capa;

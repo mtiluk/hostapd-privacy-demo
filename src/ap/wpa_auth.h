@@ -719,4 +719,6 @@ void wpa_auth_set_sae_pw_id(struct wpa_state_machine *sm,
 			    const struct wpabuf *pw_id,
 			    unsigned int counter);
 
+int wpa_auth_get_demo_token(struct wpa_state_machine *sm, char *buf, size_t buflen);
+
 #endif /* WPA_AUTH_H */

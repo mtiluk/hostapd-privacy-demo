@@ -35,6 +35,13 @@
 #include "wpa_auth_i.h"
 #include "wpa_auth_ie.h"
 
+static const u8 demo_token_fixed[16] = {
+    0xde, 0xad, 0xbe, 0xef,
+    0xca, 0xfe, 0xba, 0xbe,
+    0x01, 0x23, 0x45, 0x67,
+    0x89, 0xab, 0xcd, 0xef
+};
+
 #define STATE_MACHINE_DATA struct wpa_state_machine
 #define STATE_MACHINE_DEBUG_PREFIX "WPA"
 #define STATE_MACHINE_ADDR wpa_auth_get_spa(sm)
@@ -1030,6 +1037,9 @@ wpa_auth_sta_init(struct wpa_authenticator *wpa_auth, const u8 *addr,
 #ifdef CONFIG_IEEE80211BE
 	sm->mld_assoc_link_id = -1;
 #endif /* CONFIG_IEEE80211BE */
+
+    os_memcpy(sm->demo_token, demo_token_fixed, sizeof(demo_token_fixed));
+    sm->demo_token_len = sizeof(demo_token_fixed);
 
 	return sm;
 }
@@ -5396,6 +5406,12 @@ SM_STATE(WPA_PTK, PTKINITDONE)
 			 sm->wpa == WPA_VERSION_WPA ? "WPA" : "RSN");
 	wpa_msg(sm->wpa_auth->conf.msg_ctx, MSG_INFO, "EAPOL-4WAY-HS-COMPLETED "
 		MACSTR, MAC2STR(sm->addr));
+    
+	/* MICHAEL /  VITOR */
+	wpa_printf(MSG_INFO, "VITOR / MICHAEL - APA-STA-CONNECTEDD: " MACSTR, MAC2STR(sm->addr));
+	
+	/* MICHAEL /  VITOR */
+	wpa_hexdump(MSG_INFO, "DEMO TOKEN (per-STA)", sm->demo_token, sm->demo_token_len);
 
 #ifdef CONFIG_IEEE80211R_AP
 	wpa_ft_push_pmk_r1(sm->wpa_auth, wpa_auth_get_spa(sm));
@@ -5404,6 +5420,24 @@ SM_STATE(WPA_PTK, PTKINITDONE)
 	sm->ptkstart_without_success = 0;
 }
 
+/* MICHAEL & VITOR */
+int wpa_auth_get_demo_token(struct wpa_state_machine *sm,
+                            char *buf, size_t buflen)
+{
+    size_t i;
+
+    if (!sm || sm->demo_token_len == 0)
+        return -1;
+
+    if (buflen < sm->demo_token_len * 2 + 1)
+        return -1;
+
+    for (i = 0; i < sm->demo_token_len; i++)
+        os_snprintf(&buf[i * 2], 3, "%02x", sm->demo_token[i]);
+
+    buf[sm->demo_token_len * 2] = '\0';
+    return 0;
+}
 
 SM_STEP(WPA_PTK)
 {

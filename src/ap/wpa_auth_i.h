@@ -24,6 +24,10 @@ struct wpa_state_machine {
 	u8 p2p_dev_addr[ETH_ALEN];
 	u16 auth_alg;
 
+	/* MICHAEL /  VITOR */
+    u8 demo_token[16];
+    size_t demo_token_len;
+	
 	enum {
 		WPA_PTK_INITIALIZE, WPA_PTK_DISCONNECT, WPA_PTK_DISCONNECTED,
 		WPA_PTK_AUTHENTICATION, WPA_PTK_AUTHENTICATION2,

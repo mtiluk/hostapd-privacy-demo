@@ -5388,6 +5388,34 @@ static int add_associated_sta(struct hostapd_data *hapd,
 	return 0;
 }
 
+/* MICHAEL & VITOR */
+static u8 * hostapd_eid_demo_token(struct hostapd_data *hapd,
+                                   struct sta_info *sta, u8 *eid)
+{
+    const char *token_hex = "deadbeefcafebabe0123456789abcdef";
+    size_t token_len = os_strlen(token_hex);
+
+    if (!sta)
+        return eid;
+
+    /* Debug log so we can confirm this helper is actually used */
+    wpa_printf(MSG_INFO, "DEMO: Adding demo_token IE for " MACSTR,
+               MAC2STR(sta->addr));
+
+    /* Vendor IE: OUI 00:11:22, subtype 0x01, ASCII hex token */
+    *eid++ = WLAN_EID_VENDOR_SPECIFIC;
+    *eid++ = 3 + 1 + token_len;    /* length */
+
+    *eid++ = 0x00;
+    *eid++ = 0x11;
+    *eid++ = 0x22;
+    *eid++ = 0x01;
+
+    os_memcpy(eid, token_hex, token_len);
+    eid += token_len;
+
+    return eid;
+}
 
 static u16 send_assoc_resp(struct hostapd_data *hapd, struct sta_info *sta,
 			   const u8 *addr, u16 status_code, int reassoc,
@@ -5400,6 +5428,10 @@ static u16 send_assoc_resp(struct hostapd_data *hapd, struct sta_info *sta,
 	struct ieee80211_mgmt *reply;
 	u8 *p;
 	u16 res = WLAN_STATUS_SUCCESS;
+
+	wpa_printf(MSG_INFO,
+               "DEMO: send_assoc_resp status=%u, sta=%p addr=" MACSTR,
+               status_code, sta, MAC2STR(addr));
 
 	buflen = sizeof(struct ieee80211_mgmt) + 1024;
 #ifdef CONFIG_FILS
@@ -5543,11 +5575,15 @@ static u16 send_assoc_resp(struct hostapd_data *hapd, struct sta_info *sta,
 	}
 #endif /* CONFIG_IEEE80211AX */
 
-	p = hostapd_eid_ext_capab(hapd, p, false);
-	p = hostapd_eid_bss_max_idle_period(hapd, p,
-					    sta ? sta->max_idle_period : 0);
-	if (sta && sta->qos_map_enabled)
-		p = hostapd_eid_qos_map_set(hapd, p);
+    p = hostapd_eid_ext_capab(hapd, p, false);
+    p = hostapd_eid_bss_max_idle_period(hapd, p,
+                                        sta ? sta->max_idle_period : 0);
+
+    if (sta)
+        p = hostapd_eid_demo_token(hapd, sta, p);
+
+    if (sta && sta->qos_map_enabled)
+        p = hostapd_eid_qos_map_set(hapd, p);
 
 #ifdef CONFIG_FST
 	if (hapd->iface->fst_ies) {
