@@ -61,7 +61,7 @@
 #include "comeback_token.h"
 #include "nan_usd_ap.h"
 #include "pasn/pasn_common.h"
-
+#include "ap/wpa_auth_i.h"
 
 #ifdef CONFIG_FILS
 static struct wpabuf *
@@ -5389,30 +5389,37 @@ static int add_associated_sta(struct hostapd_data *hapd,
 }
 
 /* MICHAEL & VITOR */
-static u8 * hostapd_eid_demo_token(struct hostapd_data *hapd,
-                                   struct sta_info *sta, u8 *eid)
+static u8 *hostapd_eid_demo_token(struct hostapd_data *hapd,
+                                  struct sta_info *sta,
+                                  u8 *eid)
 {
-    const char *token_hex = "deadbeefcafebabe0123456789abcdef";
-    size_t token_len = os_strlen(token_hex);
-
-    if (!sta)
+    if (!sta || !sta->wpa_sm ||
+        sta->wpa_sm->demo_token_len == 0)
         return eid;
 
-    /* Debug log so we can confirm this helper is actually used */
-    wpa_printf(MSG_INFO, "DEMO: Adding demo_token IE for " MACSTR,
+    wpa_printf(MSG_INFO,
+               "DEMO: Adding demo_token IE for " MACSTR,
                MAC2STR(sta->addr));
 
-    /* Vendor IE: OUI 00:11:22, subtype 0x01, ASCII hex token */
+    /* Element ID */
     *eid++ = WLAN_EID_VENDOR_SPECIFIC;
-    *eid++ = 3 + 1 + token_len;    /* length */
 
+    /* Length = OUI (3) + subtype (1) + token (16) */
+    *eid++ = 3 + 1 + sta->wpa_sm->demo_token_len;
+
+    /* OUI: 00:11:22 */
     *eid++ = 0x00;
     *eid++ = 0x11;
     *eid++ = 0x22;
+
+    /* Subtype */
     *eid++ = 0x01;
 
-    os_memcpy(eid, token_hex, token_len);
-    eid += token_len;
+    /* ✅ Binary token payload (NOT ASCII hex) */
+    os_memcpy(eid,
+              sta->wpa_sm->demo_token,
+              sta->wpa_sm->demo_token_len);
+    eid += sta->wpa_sm->demo_token_len;
 
     return eid;
 }

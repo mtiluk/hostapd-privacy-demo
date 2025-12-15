@@ -35,13 +35,6 @@
 #include "wpa_auth_i.h"
 #include "wpa_auth_ie.h"
 
-static const u8 demo_token_fixed[16] = {
-    0xde, 0xad, 0xbe, 0xef,
-    0xca, 0xfe, 0xba, 0xbe,
-    0x01, 0x23, 0x45, 0x67,
-    0x89, 0xab, 0xcd, 0xef
-};
-
 #define STATE_MACHINE_DATA struct wpa_state_machine
 #define STATE_MACHINE_DEBUG_PREFIX "WPA"
 #define STATE_MACHINE_ADDR wpa_auth_get_spa(sm)
@@ -1038,8 +1031,28 @@ wpa_auth_sta_init(struct wpa_authenticator *wpa_auth, const u8 *addr,
 	sm->mld_assoc_link_id = -1;
 #endif /* CONFIG_IEEE80211BE */
 
-    os_memcpy(sm->demo_token, demo_token_fixed, sizeof(demo_token_fixed));
-    sm->demo_token_len = sizeof(demo_token_fixed);
+{
+    const u8 *addr_arr[2];
+    size_t len_arr[2];
+    u8 hash[32];
+
+    /* BSSID (AP MAC address) */
+    addr_arr[0] = sm->wpa_auth->addr;
+    len_arr[0] = ETH_ALEN;
+
+    /* STA MAC address */
+    addr_arr[1] = sm->addr;
+    len_arr[1] = ETH_ALEN;
+
+    /* token = SHA256(BSSID || STA_MAC) */
+    sha256_vector(2, addr_arr, len_arr, hash);
+
+    /* Truncate to 16 bytes */
+    os_memcpy(sm->demo_token, hash, 16);
+    sm->demo_token_len = 16;
+
+    wpa_hexdump(MSG_INFO, "DEMO TOKEN (derived: SHA256(BSSID||STA_MAC))", sm->demo_token, sm->demo_token_len);
+}
 
 	return sm;
 }

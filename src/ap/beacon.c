@@ -1602,8 +1602,6 @@ void handle_probe_req(struct hostapd_data *hapd,
 	// 			MAC2STR(mgmt->sa));
 	// }
 
-	wpa_printf(MSG_INFO, "TUFF GAY TUFF");
-
 	res = ssid_match(hapd, elems.ssid, elems.ssid_len,
 			 elems.ssid_list, elems.ssid_list_len,
 			 elems.short_ssid_list, elems.short_ssid_list_len);
