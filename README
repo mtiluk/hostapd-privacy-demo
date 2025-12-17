@@ -1,56 +1,82 @@
-wpa_supplicant and hostapd
---------------------------
+# hostapd-privacy-demo
 
-Copyright (c) 2002-2024, Jouni Malinen <j@w1.fi> and contributors
-All Rights Reserved.
+This prototype is a proof of concept demonstrating that network identification during discovery can be decoupled from plaintext SSIDs in return for pseudo-random SSIDs.
 
-These programs are licensed under the BSD license (the one with
-advertisement clause removed).
+The prototype provisions an obfuscated discovery token to a station during association by embedding it within a Vendor Information Element in the Association Response frame. The token is
+intended to be stored by the client and later used for token-based discovery.
 
-If you are submitting changes to the project, please see CONTRIBUTIONS
-file for more instructions.
+Important: This is a research prototype. It is not a production-ready protocol and does not replace WPA/WPA2/WPA3.
 
+---
 
-This package may include either wpa_supplicant, hostapd, or both. See
-README file respective subdirectories (wpa_supplicant/README or
-hostapd/README) for more details.
+## What this prototype does (current functionality)
 
-Source code files were moved around in v0.6.x releases and compared to
-earlier releases, the programs are now built by first going to a
-subdirectory (wpa_supplicant or hostapd) and creating build
-configuration (.config) and running 'make' there (for Linux/BSD/cygwin
-builds).
+### Token derivation (AP-side)
+For each station, the AP derives a 16-byte token:
 
+- `token = SHA256(BSSID || STA_MAC)[0..15]`
 
-License
--------
+Properties:
+- Per-station and per-BSSID
+- Stable across reconnects (same STA MAC and BSSID)
+- Independent of SSID visibility
+- Truncated to 16 bytes.
 
-This software may be distributed, used, and modified under the terms of
-BSD license:
+### Token provisioning (on-air)
+The token is sent in plaintext inside a Vendor IE appended to the Association Response.
 
-Redistribution and use in source and binary forms, with or without
-modification, are permitted provided that the following conditions are
-met:
+IE format:
+- Element ID: 221 (Vendor Specific)
+- OUI: `00:11:22` (demo/private)
+- Subtype: `0x01`
+- Payload: 16 bytes (token)
 
-1. Redistributions of source code must retain the above copyright
-   notice, this list of conditions and the following disclaimer.
+### Security note
 
-2. Redistributions in binary form must reproduce the above copyright
-   notice, this list of conditions and the following disclaimer in the
-   documentation and/or other materials provided with the distribution.
+This token is not used for authentication or encryption. WPA/WPA2/WPA3 behaviour is unchanged. 
 
-3. Neither the name(s) of the above-listed copyright holder(s) nor the
-   names of its contributors may be used to endorse or promote products
-   derived from this software without specific prior written permission.
+---
 
-THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-"AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+## What is NOT implemented yet (planned / future work)
+
+- AP-side parsing/recognition of the token in Probe Requests
+- STA-side support (wpa_supplicant) to:
+  - store the token alongside the SSID
+  - emit the token during active scanning (Probe Requests)
+
+---
+
+## Hardware / driver requirements (critical)
+
+This project requires a **SoftMAC** (mac80211) Wi-Fi device for the AP.
+
+Why:
+- FullMAC devices generate management frames in firmware.
+- This PoC modifies the **Association Response** in software, which requires SoftMAC/mac80211.
+
+Tested working setup:
+- Platform: Raspberry Pi 4 Model B
+- AP interface: USB Wi‑Fi adapter (MediaTek MT7612U)
+- Driver: `mt76x2u` (mac80211 / SoftMAC)
+
+---
+
+## Repository layout
+
+- `hostapd-dev/hostap/hostapd/`:
+  - `src/ap/wpa_auth.c`: token derivation (per-STA state-machine init)
+  - `src/ap/wpa_auth_i.h`: token storage fields in `struct wpa_state_machine`
+  - `src/ap/ieee802_11.c`: IE construction + Association Response injection
+
+---
+
+## Build
+
+From the repo root:
+
+```bash
+git clone https://github.com/mtiluk/hostapd-privacy-demo
+cd hostapd-dev/hostap/hostapd
+cp defconfig .config
+make clean
+make -j4
