@@ -1,50 +1,30 @@
 # hostapd-privacy-demo
 
-This prototype is a proof of concept demonstrating that network identification during discovery can be decoupled from plaintext SSIDs in return for pseudo-random SSIDs.
+This is a proof of concept that network identification during discovery can be replaced with a obfuscated pseudo-random SSID rather than a plaintext SSID.
 
-The prototype provisions an obfuscated discovery token to a station during association by embedding it within a Vendor Information Element in the Association Response frame. The token is
-intended to be stored by the client and later used for token-based discovery.
+The prototype is implemented using a custom fork of the [hostapd](https://git.w1.fi/cgit/hostap/) repository. Where all additional code is implemented within functions and methods already written.  The prototype provisions an obfuscated discovery token to a station during association by embedding it within a Vendor Information Element in the Association Response frame. The token is intended to be stored by the client and later used for token-based discovery.
 
 Important: This is a research prototype. It is not a production-ready protocol and does not replace WPA/WPA2/WPA3.
 
----
 
-## What this prototype does (current functionality)
+### What this prototype does (current functionality)
 
-### Token derivation (AP-side)
-For each station, the AP derives a 16-byte token:
+For each station, the AP derives a 16 byte token where `token = SHA256(BSSID || STA_MAC)[0..15]`.
+  - Token is per station.
+  - Stable across reconnects (assuming same MAC address)
+  - Independent of SSID visibility
+  - Truncated to 16 bytes.
 
-- `token = SHA256(BSSID || STA_MAC)[0..15]`
-
-Properties:
-- Per-station and per-BSSID
-- Stable across reconnects (same STA MAC and BSSID)
-- Independent of SSID visibility
-- Truncated to 16 bytes.
-
-### Token provisioning (on-air)
-The token is sent in plaintext inside a Vendor IE appended to the Association Response.
-
-IE format:
-- Element ID: 221 (Vendor Specific)
-- OUI: `00:11:22` (demo/private)
-- Subtype: `0x01`
-- Payload: 16 bytes (token)
-
-### Security note
-
-This token is not used for authentication or encryption. WPA/WPA2/WPA3 behaviour is unchanged. 
-
----
+The token is sent in plaintext within a Vendor IE appended to the association response.
+  - Element ID: 221 (Vendor Specific)
+  - OUI: `00:11:22` (demo/private)
+  - Subtype: `0x01`
+  - Payload: 16 bytes (token)
 
 ## What is NOT implemented yet (planned / future work)
 
-- AP-side parsing/recognition of the token in Probe Requests
-- STA-side support (wpa_supplicant) to:
-  - store the token alongside the SSID
-  - emit the token during active scanning (Probe Requests)
-
----
+  - AP parsing of the token in Probe Requests.
+  - Modifying the client (wpa_supplicant) to store the token and emit the token during active scanning.
 
 ## Hardware / driver requirements (critical)
 
@@ -59,20 +39,7 @@ Tested working setup:
 - AP interface: USB Wi‑Fi adapter (MediaTek MT7612U)
 - Driver: `mt76x2u` (mac80211 / SoftMAC)
 
----
-
-## Repository layout
-
-- `hostapd-dev/hostap/hostapd/`:
-  - `src/ap/wpa_auth.c`: token derivation (per-STA state-machine init)
-  - `src/ap/wpa_auth_i.h`: token storage fields in `struct wpa_state_machine`
-  - `src/ap/ieee802_11.c`: IE construction + Association Response injection
-
----
-
 ## Build
-
-From the repo root:
 
 ```bash
 git clone https://github.com/mtiluk/hostapd-privacy-demo
@@ -80,3 +47,24 @@ cd hostapd-dev/hostap/hostapd
 cp defconfig .config
 make clean
 make -j4
+sudo ./hostapd ./hostapd.conf
+```
+
+  - Ensure the AP interface in hostapd.conf matches your device.
+
+## Configuration
+
+Minimal example hostapd.conf (edit interface/channel/security as needed):
+
+```
+interface=wlan1
+driver=nl80211
+ssid=DemoNet
+hw_mode=g
+channel=6
+
+wpa=2
+wpa_key_mgmt=WPA-PSK
+wpa_passphrase=change-this-passphrase
+rsn_pairwise=CCMP
+```
