@@ -184,10 +184,22 @@ struct mld_link_info {
 	u8 *resp_sta_profile;
 };
 
+/* MICHAEL & VITOR */
+struct demo_token_entry {
+	u8 token[16];
+	u8 sta_addr[ETH_ALEN];
+	int valid;
+};
+
 /**
  * struct hostapd_data - hostapd per-BSS data structure
  */
 struct hostapd_data {
+	/* MICHAEL & VITOR: token lookup table */
+	struct demo_token_entry *demo_token_table;
+	size_t demo_token_table_size;
+	size_t demo_token_table_count;
+
 	struct hostapd_iface *iface;
 	struct hostapd_config *iconf;
 	struct hostapd_bss_config *conf;

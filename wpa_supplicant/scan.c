@@ -24,8 +24,8 @@
 #include "scan.h"
 #include "mesh.h"
 
-static struct wpabuf * wpa_supplicant_extra_ies(struct wpa_supplicant *wpa_s);
-
+static struct wpabuf * wpa_supplicant_extra_ies(struct wpa_supplicant *wpa_s,
+						struct wpa_ssid *scan_ssid);
 
 static void wpa_supplicant_gen_assoc_event(struct wpa_supplicant *wpa_s)
 {
@@ -308,7 +308,7 @@ int wpa_supplicant_trigger_scan(struct wpa_supplicant *wpa_s,
 			params->extra_ies = NULL;
 			params->extra_ies_len = 0;
 		}
-		ies = wpa_supplicant_extra_ies(wpa_s);
+		ies = wpa_supplicant_extra_ies(wpa_s, wpa_s->current_ssid);
 		if (ies) {
 			params->extra_ies = wpabuf_head(ies);
 			params->extra_ies_len = wpabuf_len(ies);
@@ -720,8 +720,39 @@ static struct wpabuf * wpa_supplicant_ml_probe_ie(int mld_id, u16 links)
 	return extra_ie;
 }
 
+/* MICHAEL & VITOR */
+static void wpas_demo_token_add_ie(struct wpabuf *extra_ie,
+				   struct wpa_ssid *ssid)
+{
+	if (!extra_ie || !ssid || !ssid->has_demo_token ||
+	    ssid->demo_token_len != 16)
+		return;
 
-static struct wpabuf * wpa_supplicant_extra_ies(struct wpa_supplicant *wpa_s)
+	wpa_printf(MSG_INFO, "DEMO: adding token IE to Probe Request");
+
+	wpabuf_put_u8(extra_ie, WLAN_EID_VENDOR_SPECIFIC);
+	wpabuf_put_u8(extra_ie, 20);
+	wpabuf_put_u8(extra_ie, 0x00);
+	wpabuf_put_u8(extra_ie, 0x11);
+	wpabuf_put_u8(extra_ie, 0x22);
+	wpabuf_put_u8(extra_ie, 0x01);
+	wpabuf_put_data(extra_ie, ssid->demo_token, 16);
+}
+
+static struct wpa_ssid *wpas_demo_token_ssid(struct wpa_supplicant *wpa_s)
+{
+	struct wpa_ssid *ssid;
+
+	for (ssid = wpa_s->conf->ssid; ssid; ssid = ssid->next) {
+		if (ssid->has_demo_token && ssid->demo_token_len == 16)
+			return ssid;
+	}
+
+	return NULL;
+}
+
+static struct wpabuf * wpa_supplicant_extra_ies(struct wpa_supplicant *wpa_s,
+						struct wpa_ssid *scan_ssid)
 {
 	struct wpabuf *extra_ie = NULL;
 	u8 ext_capab[18];
@@ -816,6 +847,26 @@ static struct wpabuf * wpa_supplicant_extra_ies(struct wpa_supplicant *wpa_s)
 	if (wpabuf_resize(&extra_ie, 12) == 0)
 		wpas_mbo_scan_ie(wpa_s, extra_ie);
 #endif /* CONFIG_MBO */
+
+	/* MICHAEL & VITOR: add pseudo-SSID token IE to Probe Request */
+	if (!scan_ssid)
+		scan_ssid = wpas_demo_token_ssid(wpa_s);
+	if (!scan_ssid)
+		scan_ssid = wpa_s->next_ssid;
+	if (!scan_ssid)
+		scan_ssid = wpa_s->current_ssid;
+
+	if (scan_ssid) {
+		wpa_printf(MSG_INFO,
+			   "DEMO: scan_ssid present has_demo_token=%d len=%zu",
+			   scan_ssid->has_demo_token,
+			   scan_ssid->demo_token_len);
+	}
+
+	if (scan_ssid && scan_ssid->has_demo_token &&
+	    scan_ssid->demo_token_len == 16 &&
+	    wpabuf_resize(&extra_ie, 22) == 0)
+		wpas_demo_token_add_ie(extra_ie, scan_ssid);
 
 	if (wpa_s->vendor_elem[VENDOR_ELEM_PROBE_REQ]) {
 		struct wpabuf *buf = wpa_s->vendor_elem[VENDOR_ELEM_PROBE_REQ];
@@ -1253,8 +1304,17 @@ static void wpa_supplicant_scan(void *eloop_ctx, void *timeout_ctx)
 		ssid = wpa_s->current_ssid;
 		wpa_hexdump_ascii(MSG_DEBUG, "Scan SSID",
 				  ssid->ssid, ssid->ssid_len);
-		params.ssids[0].ssid = ssid->ssid;
-		params.ssids[0].ssid_len = ssid->ssid_len;
+		if (ssid->has_demo_token && ssid->demo_token_len == 16) {
+			wpa_printf(MSG_INFO,
+				   "DEMO: using wildcard SSID for token-based reattach scan");
+			params.ssids[0].ssid = NULL;
+			params.ssids[0].ssid_len = 0;
+		} else {
+			wpa_hexdump_ascii(MSG_DEBUG, "Scan SSID",
+					  ssid->ssid, ssid->ssid_len);
+			params.ssids[0].ssid = ssid->ssid;
+			params.ssids[0].ssid_len = ssid->ssid_len;
+		}
 		params.num_ssids = 1;
 
 		/*
@@ -1280,12 +1340,21 @@ static void wpa_supplicant_scan(void *eloop_ctx, void *timeout_ctx)
 		while (ssid) {
 			if (!wpas_network_disabled(wpa_s, ssid) &&
 			    ssid->scan_ssid) {
-				wpa_hexdump_ascii(MSG_DEBUG, "Scan SSID",
-						  ssid->ssid, ssid->ssid_len);
-				params.ssids[params.num_ssids].ssid =
-					ssid->ssid;
-				params.ssids[params.num_ssids].ssid_len =
-					ssid->ssid_len;
+				if (ssid->has_demo_token &&
+				    ssid->demo_token_len == 16) {
+					wpa_printf(MSG_INFO,
+						   "DEMO: using wildcard SSID for token-based scan");
+					params.ssids[params.num_ssids].ssid = NULL;
+					params.ssids[params.num_ssids].ssid_len = 0;
+				} else {
+					wpa_hexdump_ascii(MSG_DEBUG, "Scan SSID",
+							  ssid->ssid,
+							  ssid->ssid_len);
+					params.ssids[params.num_ssids].ssid =
+						ssid->ssid;
+					params.ssids[params.num_ssids].ssid_len =
+						ssid->ssid_len;
+				}
 				params.num_ssids++;
 				if (params.num_ssids + 1 >= max_ssids)
 					break;
@@ -1373,7 +1442,7 @@ static void wpa_supplicant_scan(void *eloop_ctx, void *timeout_ctx)
 
 ssid_list_set:
 	wpa_supplicant_optimize_freqs(wpa_s, &params);
-	extra_ie = wpa_supplicant_extra_ies(wpa_s);
+	extra_ie = wpa_supplicant_extra_ies(wpa_s, wpa_s->current_ssid);
 
 	if (wpa_s->last_scan_req == MANUAL_SCAN_REQ &&
 	    wpa_s->manual_scan_only_new) {
@@ -1469,6 +1538,9 @@ ssid_list_set:
 		params.bssid = wpa_s->next_scan_bssid;
 		bss = wpa_bss_get_bssid_latest(wpa_s, params.bssid);
 		if (!wpa_s->next_scan_bssid_wildcard_ssid &&
+		    !(wpa_s->current_ssid &&
+		      wpa_s->current_ssid->has_demo_token &&
+		      wpa_s->current_ssid->demo_token_len == 16) &&
 		    bss && bss->ssid_len && params.num_ssids == 1 &&
 		    params.ssids[0].ssid_len == 0) {
 			params.ssids[0].ssid = bss->ssid;
@@ -1857,7 +1929,17 @@ int wpa_supplicant_req_sched_scan(struct wpa_supplicant *wpa_s)
 		params.filter_ssids = NULL;
 	}
 
-	extra_ie = wpa_supplicant_extra_ies(wpa_s);
+	if (ssid) {
+		wpa_printf(MSG_INFO,
+			   "DEMO: scan() using ssid with has_demo_token=%d len=%zu",
+			   ssid->has_demo_token,
+			   ssid->demo_token_len);
+	} else {
+		wpa_printf(MSG_INFO,
+			   "DEMO: scan() has NULL ssid, trying fallback in extra_ies");
+	}
+
+	extra_ie = wpa_supplicant_extra_ies(wpa_s, wpa_s->current_ssid);
 	if (extra_ie) {
 		params.extra_ies = wpabuf_head(extra_ie);
 		params.extra_ies_len = wpabuf_len(extra_ie);

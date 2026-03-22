@@ -62,6 +62,7 @@
 #include "nan_usd_ap.h"
 #include "pasn/pasn_common.h"
 #include "ap/wpa_auth_i.h"
+#include "ap/wpa_auth.h"
 
 #ifdef CONFIG_FILS
 static struct wpabuf *
@@ -5390,38 +5391,34 @@ static int add_associated_sta(struct hostapd_data *hapd,
 
 /* MICHAEL & VITOR */
 static u8 *hostapd_eid_demo_token(struct hostapd_data *hapd,
-                                  struct sta_info *sta,
-                                  u8 *eid)
+				  struct sta_info *sta,
+				  u8 *eid)
 {
-    if (!sta || !sta->wpa_sm ||
-        sta->wpa_sm->demo_token_len == 0)
-        return eid;
+	const u8 *token;
+	size_t token_len;
 
-    wpa_printf(MSG_INFO,
-               "DEMO: Adding demo_token IE for " MACSTR,
-               MAC2STR(sta->addr));
+	if (!sta || !sta->wpa_sm)
+		return eid;
 
-    /* Element ID */
-    *eid++ = WLAN_EID_VENDOR_SPECIFIC;
+	if (wpa_auth_get_demo_token_bin(sta->wpa_sm, &token, &token_len) < 0)
+		return eid;
 
-    /* Length = OUI (3) + subtype (1) + token (16) */
-    *eid++ = 3 + 1 + sta->wpa_sm->demo_token_len;
+	wpa_printf(MSG_INFO,
+		   "DEMO: Adding demo_token IE for " MACSTR,
+		   MAC2STR(sta->addr));
 
-    /* OUI: 00:11:22 */
-    *eid++ = 0x00;
-    *eid++ = 0x11;
-    *eid++ = 0x22;
+	*eid++ = WLAN_EID_VENDOR_SPECIFIC;
+	*eid++ = 3 + 1 + token_len;
 
-    /* Subtype */
-    *eid++ = 0x01;
+	*eid++ = 0x00;
+	*eid++ = 0x11;
+	*eid++ = 0x22;
+	*eid++ = 0x01;
 
-    /* ✅ Binary token payload (NOT ASCII hex) */
-    os_memcpy(eid,
-              sta->wpa_sm->demo_token,
-              sta->wpa_sm->demo_token_len);
-    eid += sta->wpa_sm->demo_token_len;
+	os_memcpy(eid, token, token_len);
+	eid += token_len;
 
-    return eid;
+	return eid;
 }
 
 static u16 send_assoc_resp(struct hostapd_data *hapd, struct sta_info *sta,
@@ -5587,7 +5584,7 @@ static u16 send_assoc_resp(struct hostapd_data *hapd, struct sta_info *sta,
                                         sta ? sta->max_idle_period : 0);
 
     if (sta)
-        p = hostapd_eid_demo_token(hapd, sta, p);
+		p = hostapd_eid_demo_token(hapd, sta, p);
 
     if (sta && sta->qos_map_enabled)
         p = hostapd_eid_qos_map_set(hapd, p);

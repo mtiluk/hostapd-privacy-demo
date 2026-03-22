@@ -33,6 +33,7 @@
 #include "dfs.h"
 #include "taxonomy.h"
 #include "ieee802_11_auth.h"
+#include "ap/wpa_auth.h"
 
 /* MICHAEL / VITOR - EXPERIMENT */
 // static const u8 token_ssid[] = "TOKENSSID123"; 
@@ -1438,11 +1439,43 @@ static bool parse_ml_probe_req(const struct ieee80211_eht_ml *ml, size_t ml_len,
 }
 #endif /* CONFIG_IEEE80211BE */
 
+/* MICHAEL & VITOR*/
+static int hostapd_parse_demo_token_ie(const u8 *ies, size_t ies_len,
+				       u8 *token)
+{
+	const u8 *pos = ies;
+	const u8 *end = ies + ies_len;
+
+	while (pos + 2 <= end) {
+		u8 id = *pos++;
+		u8 len = *pos++;
+
+		if (pos + len > end)
+			return -1;
+
+		if (id == WLAN_EID_VENDOR_SPECIFIC && len == 20) {
+			if (pos[0] == 0x00 && pos[1] == 0x11 &&
+			    pos[2] == 0x22 && pos[3] == 0x01) {
+				os_memcpy(token, pos + 4, 16);
+				return 0;
+			}
+		}
+
+		pos += len;
+	}
+
+	return -1;
+}
 
 void handle_probe_req(struct hostapd_data *hapd,
 		      const struct ieee80211_mgmt *mgmt, size_t len,
 		      int ssi_signal)
 {
+	/* MICHAEL & VITOR */
+	int token_match = 0;
+	u8 token[16];
+	u8 token_sta_addr[ETH_ALEN];
+	
 	struct ieee802_11_elems elems;
 	const u8 *ie;
 	size_t ie_len;
@@ -1602,9 +1635,25 @@ void handle_probe_req(struct hostapd_data *hapd,
 	// 			MAC2STR(mgmt->sa));
 	// }
 
-	res = ssid_match(hapd, elems.ssid, elems.ssid_len,
-			 elems.ssid_list, elems.ssid_list_len,
-			 elems.short_ssid_list, elems.short_ssid_list_len);
+	/* MICHAEL & VITOR: token-based discovery */
+	if (hostapd_parse_demo_token_ie(ie, ie_len, token) == 0) {
+		if (hostapd_demo_token_lookup(hapd, token,
+					      token_sta_addr) == 0) {
+			wpa_printf(MSG_INFO,
+				   "DEMO: valid token probe from " MACSTR,
+				   MAC2STR(mgmt->sa));
+			token_match = 1;
+		}
+	}
+
+	if (token_match) {
+		res = EXACT_SSID_MATCH;
+	} else {
+		res = ssid_match(hapd, elems.ssid, elems.ssid_len,
+				 elems.ssid_list, elems.ssid_list_len,
+				 elems.short_ssid_list,
+				 elems.short_ssid_list_len);
+	}
 
 	// if (token_match)
     // 	res = EXACT_SSID_MATCH;

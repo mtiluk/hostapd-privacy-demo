@@ -60,6 +60,52 @@ struct parse_data {
 	int key_data;
 };
 
+/* MICHAEL & VITOR */
+static int wpa_config_parse_demo_token(const struct parse_data *data,
+				       struct wpa_ssid *ssid,
+				       int line, const char *value)
+{
+	if (os_strlen(value) != 32) {
+		wpa_printf(MSG_ERROR,
+			   "Line %d: invalid demo_token length", line);
+		return -1;
+	}
+
+	if (hexstr2bin(value, ssid->demo_token, 16) < 0) {
+		wpa_printf(MSG_ERROR,
+			   "Line %d: invalid demo_token value", line);
+		return -1;
+	}
+
+	ssid->demo_token_len = 16;
+	ssid->has_demo_token = 1;
+
+	wpa_printf(MSG_INFO, "DEMO: parsing demo_token from config");
+	wpa_hexdump(MSG_INFO, "DEMO: parsed demo_token",
+		    ssid->demo_token, 16);
+
+	return 0;
+}
+
+static char * wpa_config_write_demo_token(const struct parse_data *data,
+					  struct wpa_ssid *ssid)
+{
+	char *value;
+	int i;
+
+	if (!ssid->has_demo_token || ssid->demo_token_len != 16)
+		return NULL;
+
+	value = os_malloc(16 * 2 + 1);
+	if (!value)
+		return NULL;
+
+	for (i = 0; i < 16; i++)
+		os_snprintf(value + i * 2, 3, "%02x", ssid->demo_token[i]);
+
+	value[32] = '\0';
+	return value;
+}
 
 static int wpa_config_parse_str(const struct parse_data *data,
 				struct wpa_ssid *ssid,
@@ -2578,6 +2624,9 @@ static char * wpa_config_write_mac_value(const struct parse_data *data,
  * functions.
  */
 static const struct parse_data ssid_fields[] = {
+	/* MICHAEL & VITOR*/
+	{ FUNC(demo_token) },
+	
 	{ STR_RANGE(ssid, 0, SSID_MAX_LEN) },
 	{ INT_RANGE(scan_ssid, 0, 1) },
 	{ FUNC(bssid) },

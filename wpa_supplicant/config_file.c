@@ -778,6 +778,17 @@ static void wpa_config_write_network(FILE *f, struct wpa_ssid *ssid)
 
 	STR(ssid);
 	INT(scan_ssid);
+
+	/* MICHAEL & VITOR*/
+	if (ssid->has_demo_token && ssid->demo_token_len == 16) {
+		int i;
+
+		fprintf(f, "\tdemo_token=");
+		for (i = 0; i < 16; i++)
+			fprintf(f, "%02x", ssid->demo_token[i]);
+		fprintf(f, "\n");
+	}
+
 	write_bssid(f, ssid);
 	write_bssid_hint(f, ssid);
 	write_str(f, "bssid_ignore", ssid);

@@ -463,6 +463,12 @@ void hostapd_free_hapd_data(struct hostapd_data *hapd)
 	hapd->probereq_cb = NULL;
 	hapd->num_probereq_cb = 0;
 
+	/* MICHAEL & VITOR: free token lookup table */
+	os_free(hapd->demo_token_table);
+	hapd->demo_token_table = NULL;
+	hapd->demo_token_table_size = 0;
+	hapd->demo_token_table_count = 0;
+
 #ifdef CONFIG_P2P
 	wpabuf_free(hapd->p2p_beacon_ie);
 	hapd->p2p_beacon_ie = NULL;
@@ -1688,6 +1694,22 @@ setup_mld:
 
 	if (conf->wpa && hostapd_setup_wpa(hapd))
 		return -1;
+
+	/* MICHAEL & VITOR: initialize token lookup table */
+	hapd->demo_token_table_size = 256;
+	hapd->demo_token_table = os_calloc(
+		hapd->demo_token_table_size,
+		sizeof(struct demo_token_entry));
+	if (!hapd->demo_token_table) {
+		wpa_printf(MSG_ERROR,
+			   "DEMO: failed to allocate token lookup table");
+		return -1;
+	}
+	hapd->demo_token_table_count = 0;
+
+	wpa_printf(MSG_INFO,
+		   "DEMO: token lookup table initialized (size=%zu)",
+		   hapd->demo_token_table_size);
 
 	if (accounting_init(hapd)) {
 		wpa_printf(MSG_ERROR, "Accounting initialization failed.");

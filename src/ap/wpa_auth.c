@@ -34,6 +34,7 @@
 #include "pmksa_cache_auth.h"
 #include "wpa_auth_i.h"
 #include "wpa_auth_ie.h"
+#include "ap/hostapd.h"
 
 #define STATE_MACHINE_DATA struct wpa_state_machine
 #define STATE_MACHINE_DEBUG_PREFIX "WPA"
@@ -1031,32 +1032,137 @@ wpa_auth_sta_init(struct wpa_authenticator *wpa_auth, const u8 *addr,
 	sm->mld_assoc_link_id = -1;
 #endif /* CONFIG_IEEE80211BE */
 
-{
-    const u8 *addr_arr[2];
-    size_t len_arr[2];
-    u8 hash[32];
+	/* MICHAEL & VITOR: derive pseudo-SSID token from BSSID || STA_MAC */
+	{
+		const u8 *addr_arr[2];
+		size_t len_arr[2];
+		u8 hash[32];
 
-    /* BSSID (AP MAC address) */
-    addr_arr[0] = sm->wpa_auth->addr;
-    len_arr[0] = ETH_ALEN;
+		addr_arr[0] = sm->wpa_auth->addr;
+		len_arr[0] = ETH_ALEN;
 
-    /* STA MAC address */
-    addr_arr[1] = sm->addr;
-    len_arr[1] = ETH_ALEN;
+		addr_arr[1] = sm->addr;
+		len_arr[1] = ETH_ALEN;
 
-    /* token = SHA256(BSSID || STA_MAC) */
-    sha256_vector(2, addr_arr, len_arr, hash);
+		sha256_vector(2, addr_arr, len_arr, hash);
 
-    /* Truncate to 16 bytes */
-    os_memcpy(sm->demo_token, hash, 16);
-    sm->demo_token_len = 16;
+		os_memcpy(sm->demo_token, hash, 16);
+		sm->demo_token_len = 16;
 
-    wpa_hexdump(MSG_INFO, "DEMO TOKEN (derived: SHA256(BSSID||STA_MAC))", sm->demo_token, sm->demo_token_len);
-}
+		wpa_hexdump(MSG_INFO,
+			    "DEMO TOKEN (derived: SHA256(BSSID||STA_MAC))",
+			    sm->demo_token,
+			    sm->demo_token_len);
+
+		if (wpa_auth->cb_ctx) {
+			hostapd_demo_token_register(
+				(struct hostapd_data *) wpa_auth->cb_ctx,
+				sm->demo_token,
+				sm->addr);
+		}
+	}
 
 	return sm;
 }
 
+int wpa_auth_get_demo_token(struct wpa_state_machine *sm, char *buf,
+			    size_t buflen)
+{
+	size_t i, pos = 0;
+
+	if (!sm || !buf || sm->demo_token_len == 0)
+		return -1;
+
+	if (buflen < sm->demo_token_len * 2 + 1)
+		return -1;
+
+	for (i = 0; i < sm->demo_token_len; i++) {
+		int ret = os_snprintf(buf + pos, buflen - pos, "%02x",
+				      sm->demo_token[i]);
+		if (os_snprintf_error(buflen - pos, ret))
+			return -1;
+		pos += ret;
+	}
+
+	buf[pos] = '\0';
+	return 0;
+}
+
+int wpa_auth_get_demo_token_bin(struct wpa_state_machine *sm,
+				const u8 **token,
+				size_t *token_len)
+{
+	if (!sm || !token || !token_len || sm->demo_token_len == 0)
+		return -1;
+
+	*token = sm->demo_token;
+	*token_len = sm->demo_token_len;
+	return 0;
+}
+
+void hostapd_demo_token_register(struct hostapd_data *hapd,
+				 const u8 *token,
+				 const u8 *sta_addr)
+{
+	size_t i;
+	struct demo_token_entry *entry = NULL;
+
+	if (!hapd || !hapd->demo_token_table)
+		return;
+
+	for (i = 0; i < hapd->demo_token_table_size; i++) {
+		if (hapd->demo_token_table[i].valid &&
+		    os_memcmp(hapd->demo_token_table[i].token, token, 16) == 0) {
+			os_memcpy(hapd->demo_token_table[i].sta_addr,
+				  sta_addr, ETH_ALEN);
+			return;
+		}
+	}
+
+	for (i = 0; i < hapd->demo_token_table_size; i++) {
+		if (!hapd->demo_token_table[i].valid) {
+			entry = &hapd->demo_token_table[i];
+			break;
+		}
+	}
+
+	if (!entry) {
+		wpa_printf(MSG_WARNING,
+			   "DEMO: token table full; cannot register token");
+		return;
+	}
+
+	os_memcpy(entry->token, token, 16);
+	os_memcpy(entry->sta_addr, sta_addr, ETH_ALEN);
+	entry->valid = 1;
+	hapd->demo_token_table_count++;
+
+	wpa_printf(MSG_INFO,
+		   "DEMO: token registered for " MACSTR,
+		   MAC2STR(sta_addr));
+}
+
+int hostapd_demo_token_lookup(struct hostapd_data *hapd,
+			      const u8 *token,
+			      u8 *sta_addr)
+{
+	size_t i;
+
+	if (!hapd || !hapd->demo_token_table || !token || !sta_addr)
+		return -1;
+
+	for (i = 0; i < hapd->demo_token_table_size; i++) {
+		if (hapd->demo_token_table[i].valid &&
+		    os_memcmp(hapd->demo_token_table[i].token, token, 16) == 0) {
+			os_memcpy(sta_addr,
+				  hapd->demo_token_table[i].sta_addr,
+				  ETH_ALEN);
+			return 0;
+		}
+	}
+
+	return -1;
+}
 
 int wpa_auth_sta_associated(struct wpa_authenticator *wpa_auth,
 			    struct wpa_state_machine *sm)
@@ -5431,25 +5537,6 @@ SM_STATE(WPA_PTK, PTKINITDONE)
 #endif /* CONFIG_IEEE80211R_AP */
 
 	sm->ptkstart_without_success = 0;
-}
-
-/* MICHAEL & VITOR */
-int wpa_auth_get_demo_token(struct wpa_state_machine *sm,
-                            char *buf, size_t buflen)
-{
-    size_t i;
-
-    if (!sm || sm->demo_token_len == 0)
-        return -1;
-
-    if (buflen < sm->demo_token_len * 2 + 1)
-        return -1;
-
-    for (i = 0; i < sm->demo_token_len; i++)
-        os_snprintf(&buf[i * 2], 3, "%02x", sm->demo_token[i]);
-
-    buf[sm->demo_token_len * 2] = '\0';
-    return 0;
 }
 
 SM_STEP(WPA_PTK)

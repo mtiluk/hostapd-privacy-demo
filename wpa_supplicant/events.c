@@ -4335,6 +4335,36 @@ out:
 }
 
 
+/* MICHAEL & VITOR*/
+static int wpa_parse_demo_token_ie(const u8 *ies, size_t ies_len,
+				   u8 *token, size_t *token_len)
+{
+	const u8 *pos = ies;
+	const u8 *end = ies + ies_len;
+
+	while (pos + 2 <= end) {
+		u8 id = *pos++;
+		u8 len = *pos++;
+
+		if (pos + len > end)
+			return -1;
+
+		if (id == WLAN_EID_VENDOR_SPECIFIC && len == 20) {
+			if (pos[0] == 0x00 && pos[1] == 0x11 &&
+			    pos[2] == 0x22 && pos[3] == 0x01) {
+				os_memcpy(token, pos + 4, 16);
+				*token_len = 16;
+				return 0;
+			}
+		}
+
+		pos += len;
+	}
+
+	return -1;
+}
+
+
 static void wpa_supplicant_event_assoc(struct wpa_supplicant *wpa_s,
 				       union wpa_event_data *data)
 {
@@ -4391,6 +4421,37 @@ static void wpa_supplicant_event_assoc(struct wpa_supplicant *wpa_s,
 
 	if (data && wpa_supplicant_event_associnfo(wpa_s, data) < 0)
 		return;
+
+	/* MICHAEL & VITOR: extract demo token from Association Response */
+	if (data && data->assoc_info.resp_ies && wpa_s->current_ssid) {
+		u8 token[16];
+		size_t token_len = 0;
+
+		if (wpa_parse_demo_token_ie(data->assoc_info.resp_ies,
+					    data->assoc_info.resp_ies_len,
+					    token, &token_len) == 0) {
+			os_memcpy(wpa_s->current_ssid->demo_token, token, 16);
+			wpa_s->current_ssid->demo_token_len = 16;
+			wpa_s->current_ssid->has_demo_token = 1;
+
+			wpa_hexdump(MSG_INFO,
+				    "DEMO: token stored by STA",
+				    token, 16);
+
+			if (wpa_s->confname && wpa_s->conf &&
+			    wpa_s->conf->update_config) {
+				if (wpa_config_write(wpa_s->confname,
+						     wpa_s->conf) < 0) {
+					wpa_printf(MSG_WARNING,
+						   "DEMO: failed to persist demo_token");
+				} else {
+					wpa_printf(MSG_INFO,
+						   "DEMO: demo_token persisted to config");
+				}
+			}
+		}
+	}
+
 	/*
 	 * FILS authentication can share the same mechanism to mark the
 	 * connection fully authenticated, so set ft_completed also based on

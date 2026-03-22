@@ -102,6 +102,11 @@ enum wpas_rsn_overriding {
  * configuration is mapped to a struct wpa_ssid instance.
  */
 struct wpa_ssid {
+	/* MICHAEL & VITOR: pseudo-SSID discovery token */
+	u8 demo_token[16];
+	size_t demo_token_len;
+	int has_demo_token;
+	
 	/**
 	 * next - Next network in global list
 	 *

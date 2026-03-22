@@ -719,6 +719,21 @@ void wpa_auth_set_sae_pw_id(struct wpa_state_machine *sm,
 			    const struct wpabuf *pw_id,
 			    unsigned int counter);
 
-int wpa_auth_get_demo_token(struct wpa_state_machine *sm, char *buf, size_t buflen);
+int wpa_auth_get_demo_token(struct wpa_state_machine *sm, char *buf,
+			    size_t buflen);
 
+struct hostapd_data;
+
+int wpa_auth_get_demo_token_bin(struct wpa_state_machine *sm,
+				const u8 **token,
+				size_t *token_len);
+
+void hostapd_demo_token_register(struct hostapd_data *hapd,
+				 const u8 *token,
+				 const u8 *sta_addr);
+
+int hostapd_demo_token_lookup(struct hostapd_data *hapd,
+			      const u8 *token,
+			      u8 *sta_addr);
+				  
 #endif /* WPA_AUTH_H */
